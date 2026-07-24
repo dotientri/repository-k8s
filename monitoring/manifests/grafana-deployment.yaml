@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: monitoring-worker
+      securityContext:
+        fsGroup: 472
+      containers:
+      - name: grafana
+        image: grafana/grafana:9.4.3
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          value: admin
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: admin
+        ports:
+        - containerPort: 3000
+        volumeMounts:
+        - name: grafana-data
+          mountPath: /var/lib/grafana
+      volumes:
+      - name: grafana-data
+        persistentVolumeClaim:
+          claimName: grafana-data-pvc

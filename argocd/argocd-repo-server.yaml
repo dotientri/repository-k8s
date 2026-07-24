@@ -1,0 +1,141 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-repo-server
+    app.kubernetes.io/part-of: argocd
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-repo-server
+        app.kubernetes.io/part-of: argocd
+    spec:
+      # Chỉ định chạy trên monitoring-worker
+      nodeSelector:
+        kubernetes.io/hostname: monitoring-worker
+        workload-type: gitops
+
+      # Pod anti-affinity: tránh chạy cùng node nếu có thể
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - argocd-repo-server
+              topologyKey: kubernetes.io/hostname
+
+      serviceAccountName: argocd-repo-server
+      containers:
+      - name: argocd-repo-server
+        image: quay.io/argoproj/argocd:v2.10.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: server
+          containerPort: 8081
+          protocol: TCP
+        - name: metrics
+          containerPort: 8084
+          protocol: TCP
+        
+        # Giới hạn tài nguyên RAM và CPU
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        
+        # Liveness và Readiness probe
+        livenessProbe:
+          tcpSocket:
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        
+        readinessProbe:
+          tcpSocket:
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        
+        env:
+        - name: ARGOCD_RECONCILIATION_TIMEOUT
+          value: 180s
+        - name: ARGOCD_REPO_SERVER_PARALLELISM_LIMIT
+          value: "10"
+        
+        volumeMounts:
+        - name: ssh-known-hosts-cm
+          mountPath: /home/argocd/.ssh
+        - name: tls-certs
+          mountPath: /home/argocd/.argocd/tls
+        - name: argocd-repo-server-tls
+          mountPath: /home/argocd/.argocd/server/tls
+        - name: argocd-repo-cache
+          mountPath: /tmp/argocd-repo-cache
+      
+      volumes:
+      - name: ssh-known-hosts-cm
+        configMap:
+          name: argocd-ssh-known-hosts-cm
+          defaultMode: 0644
+      - name: tls-certs
+        configMap:
+          name: argocd-tls-certs-cm
+          defaultMode: 0644
+      - name: argocd-repo-server-tls
+        secret:
+          secretName: argocd-repo-server-tls
+          defaultMode: 0644
+      - name: argocd-repo-cache
+        emptyDir:
+          sizeLimit: 2Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-repo-server
+    app.kubernetes.io/part-of: argocd
+spec:
+  ports:
+  - name: server
+    port: 8081
+    protocol: TCP
+    targetPort: 8081
+  - name: metrics
+    port: 8084
+    protocol: TCP
+    targetPort: 8084
+  selector:
+    app.kubernetes.io/name: argocd-repo-server
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-repo-server
+    app.kubernetes.io/part-of: argocd

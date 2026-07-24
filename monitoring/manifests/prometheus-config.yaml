@@ -1,0 +1,190 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s      # Đã sửa: Đồng bộ từ 180s xuống 15s để tránh lệch thời gian dữ liệu thô
+      evaluation_interval: 15s  # Thêm mới: Ép Prometheus quét và đánh giá các luật cảnh báo (alert) mỗi 15 giây một lần
+
+    rule_files:
+    - /etc/prometheus/alert_rules.yml
+
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets:
+          - alertmanager:9093
+
+    scrape_configs:
+      - job_name: 'node-exporter'
+        scrape_interval: 15s
+        static_configs:
+          - targets:
+            - 40.83.95.4:9100
+            labels:
+              domain: congvienxanhhcm.me
+              project: congvienxanhhcm
+
+      - job_name: 'postgres-exporter'
+        scrape_interval: 15s
+        static_configs:
+          - targets:
+            - 40.83.95.4:9187
+            labels:
+              domain: congvienxanhhcm.me
+              project: congvienxanhhcm
+
+      - job_name: 'django-backend'
+        scrape_interval: 15s
+        static_configs:
+          - targets:
+            - 40.83.95.4:8000
+            labels:
+              domain: congvienxanhhcm.me
+              project: congvienxanhhcm
+      - job_name: 'kubernetes-endpoints'
+        kubernetes_sd_configs:
+        - role: endpoints
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+          action: replace
+          target_label: __address__
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: namespace
+        - source_labels: [__meta_kubernetes_service_name]
+          action: replace
+          target_label: service
+
+  alert_rules.yml: |
+    groups:
+    # --- NHÓM 1: CẢNH BÁO HẠ TẦNG (NODE EXPORTER) ---
+    - name: node-exporter-alerts
+      rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} is down"
+          description: "Prometheus cannot scrape {{ $labels.job }} target {{ $labels.instance }}."
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is above 80% for more than 5 minutes."
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 80% for more than 5 minutes."
+
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint!~"/run.*|/var/lib/docker/.+|/var/lib/kubelet/.+"} / node_filesystem_size_bytes) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Filesystem {{ $labels.mountpoint }} has less than 15% free space."
+
+      - alert: HighLoadAverage
+        expr: node_load1 / on (instance) count by (instance) (node_cpu_seconds_total{mode="idle"}) > 1.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High load average on {{ $labels.instance }}"
+          description: "1-minute load average is above 1.5 per CPU core for more than 5 minutes."
+
+    # --- NHÓM 2: CẢNH BÁO DATABASE (POSTGRES / POSTGIS EXPORTER) ---
+    - name: postgres-alerts
+      rules:
+      - alert: PostgresqlDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Postgres database is down"
+          description: "The database exporter cannot connect to PostgreSQL/PostGIS instance on {{ $labels.instance }}."
+
+      - alert: PostgresqlTooManyConnections
+        expr: sum by (instance) (pg_stat_database_numbackends) / sum by (instance) (pg_settings_max_connections) * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Postgres active connections are too high"
+          description: "Total database active connections reached {{ $value | printf \"%.2f\" }}% of max allowed capacity on {{ $labels.instance }}."
+
+    # --- NHÓM 3: CẢNH BÁO APPLICATION BACKEND (DJANGO PROMETHEUS) ---
+    - name: django-alerts
+      rules:
+      - alert: DjangoHighHttp5xxRate
+        expr: sum(rate(django_http_responses_total_by_status_total{status=~"5.*"}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m])) * 100 > 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Django Backend generating high server errors"
+          description: "HTTP 5xx server error code rate is at {{ $value | printf \"%.2f\" }}% (higher than 5% threshold) for over 2 minutes."
+
+      - alert: DjangoHighLatency
+        expr: histogram_quantile(0.95, sum(rate(django_http_requests_latency_seconds_by_view_method_bucket[5m])) by (le, instance)) > 2
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Django API endpoint latency is high"
+          description: "95% of incoming backend requests take more than 2 seconds to respond on {{ $labels.instance }}."
+    # --- NHÓM 4: CẢNH BÁO DỰ ÁN VOTING APP TRÊN K3S ---
+    - name: voting-app-alerts
+      rules:
+      - alert: VotingAppServiceDown
+        expr: up{job="kubernetes-endpoints"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Dịch vụ {{ $labels.service }} đang sập"
+          description: "Pod của service {{ $labels.service }} (Namespace: {{ $labels.namespace }}) đã mất kết nối với Prometheus hơn 1 phút."
+
+      - alert: HighHttpErrorRate
+        expr: sum(rate(http_requests_total{status=~"5.*", job="kubernetes-endpoints"}[5m])) / sum(rate(http_requests_total{job="kubernetes-endpoints"}[5m])) * 100 > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tỷ lệ lỗi 5xx cao trên giao diện Web"
+          description: "Có hơn 5% lượng người dùng truy cập vào {{ $labels.service }} gặp lỗi hệ thống (HTTP 500) trong 2 phút qua."
+          
+      - alert: WorkerHighRestart
+        expr: changes(process_start_time_seconds{service="worker"}[10m]) > 3
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker khởi động lại liên tục"
+          description: "Con .NET worker đang có dấu hiệu bị crash và phải restart hơn 3 lần trong 10 phút."

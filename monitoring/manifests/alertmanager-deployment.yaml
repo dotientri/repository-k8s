@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: monitoring
+  labels:
+    app: alertmanager
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      initContainers:
+      - name: render-config
+        image: alpine:3.20
+        envFrom:
+        - secretRef:
+            name: alertmanager-telegram
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -eu
+          if [ "${TELEGRAM_BOT_TOKEN}" = "REPLACE_WITH_TELEGRAM_BOT_TOKEN" ] || [ "${TELEGRAM_CHAT_ID}" = "REPLACE_WITH_TELEGRAM_CHAT_ID" ]; then
+            echo "Please update alertmanager-telegram secret with real TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID."
+            exit 1
+          fi
+          sed \
+            -e "s|__TELEGRAM_BOT_TOKEN__|${TELEGRAM_BOT_TOKEN}|g" \
+            -e "s|__TELEGRAM_CHAT_ID__|${TELEGRAM_CHAT_ID}|g" \
+            /config-template/alertmanager.yml.template > /config/alertmanager.yml
+        volumeMounts:
+        - name: config-template
+          mountPath: /config-template
+        - name: rendered-config
+          mountPath: /config
+      containers:
+      - name: alertmanager
+        image: prom/alertmanager:v0.27.0
+        args:
+        - "--config.file=/etc/alertmanager/alertmanager.yml"
+        - "--storage.path=/alertmanager"
+        ports:
+        - containerPort: 9093
+          name: web
+        volumeMounts:
+        - name: rendered-config
+          mountPath: /etc/alertmanager
+        - name: config-template
+          mountPath: /etc/alertmanager/templates
+          readOnly: true
+        - name: data
+          mountPath: /alertmanager
+      volumes:
+      - name: config-template
+        configMap:
+          name: alertmanager-config
+          items:
+          - key: alertmanager.yml.template
+            path: alertmanager.yml.template
+          - key: telegram.tmpl
+            path: telegram.tmpl
+      - name: rendered-config
+        emptyDir: {}
+      - name: data
+        emptyDir: {}

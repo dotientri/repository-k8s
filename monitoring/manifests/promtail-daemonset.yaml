@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: promtail
+  namespace: monitoring
+  labels:
+    app: promtail
+spec:
+  selector:
+    matchLabels:
+      app: promtail
+  template:
+    metadata:
+      labels:
+        app: promtail
+    spec:
+      # Bùa chú quan trọng: Cho phép Promtail nhảy vào bất kỳ node nào
+      tolerations:
+      - operator: Exists
+      serviceAccountName: promtail
+      containers:
+        - name: promtail
+          image: grafana/promtail:2.8.2
+          # Cấp quyền Root (Thượng phương bảo kiếm) để chui vào kho log K3s
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          args:
+            - -config.file=/etc/promtail/promtail.yaml
+          volumeMounts:
+            - name: promtail-config
+              mountPath: /etc/promtail
+            - name: varlog
+              mountPath: /var/log
+            - name: positions
+              mountPath: /var/log/positions
+      volumes:
+        - name: promtail-config
+          configMap:
+            name: promtail-config
+            items:
+              - key: promtail.yaml
+                path: promtail.yaml
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: positions
+          hostPath:
+            path: /var/lib/promtail
+            type: DirectoryOrCreate

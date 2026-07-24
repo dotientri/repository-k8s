@@ -1,0 +1,85 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Cấu hình chung
+  application.instanceLabelKey: argocd.argoproj.io/instance
+  url: https://argocd.example.com
+  
+  # Cấu hình SSH
+  ssh_known_hosts: |
+    github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQwcKllnvg/FclF1Kw6xd7voDhxQag2DTBBMd0yfegbRjwotWMo8nVWQvUHuGiMbt5rnWW+z6jXy1/Gk=
+    gitlab.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBGQhMqQVgp9d/EkBKEGchAvVp51qrDXKMI7c4bS9S9CfGGvLEr/mCjCQ9C2aRPgJ0sVKvTfLEONFuKGCVtEiwGo=
+  
+  # Cấu hình repository
+  repositories: |
+    - url: https://github.com/your-org/your-repo.git
+      name: your-repo
+      type: git
+      password: "$git-repo-password"
+      username: not-used
+  
+  # Cấu hình notification
+  notificationServer.disabled: "false"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-rbac-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  policy.default: role:viewer
+  policy.csv: |
+    # Cho phép admin full access
+    p, admin, applications, *, */*, allow
+    p, admin, repositories, *, *, allow
+    p, admin, clusters, *, *, allow
+    p, admin, accounts, *, *, allow
+    p, admin, exec, create, */*, allow
+    
+    # Cho phép developer xem và tạo applications
+    p, developer, applications, get, */*, allow
+    p, developer, applications, create, */*, allow
+    p, developer, applications, update, */*, allow
+    p, developer, applications, sync, */*, allow
+    
+    # Mapping users to roles
+    g, admin-user, admin
+    g, developer-user, developer
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-ssh-known-hosts-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-ssh-known-hosts-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  ssh_known_hosts: |
+    github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQwcKllnvg/FclF1Kw6xd7voDhxQag2DTBBMd0yfegbRjwotWMo8nVWQvUHuGiMbt5rnWW+z6jXy1/Gk=
+    gitlab.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBGQhMqQVgp9d/EkBKEGchAvVp51qrDXKMI7c4bS9S9CfGGvLEr/mCjCQ9C2aRPgJ0sVKvTfLEONFuKGCVtEiwGo=
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-tls-certs-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-tls-certs-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Thêm certificate cho repos khác nếu cần
+  argocd-tls-certs-secret: |

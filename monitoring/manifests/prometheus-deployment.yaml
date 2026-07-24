@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      nodeSelector:
+        kubernetes.io/hostname: monitoring-worker
+      securityContext:
+        fsGroup: 65534
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v2.44.0
+        args:
+        - "--config.file=/etc/prometheus/prometheus.yml"
+        - "--storage.tsdb.path=/prometheus"
+        ports:
+        - containerPort: 9090
+        volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus
+        - name: data
+          mountPath: /prometheus
+      volumes:
+      - name: config
+        configMap:
+          name: prometheus-config
+          items:
+          - key: prometheus.yml
+            path: prometheus.yml
+          - key: alert_rules.yml
+            path: alert_rules.yml
+      - name: data
+        persistentVolumeClaim:
+          claimName: prometheus-data-pvc
