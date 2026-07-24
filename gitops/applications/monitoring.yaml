@@ -7,8 +7,8 @@ spec:
   project: default
   source:
     repoURL: https://github.com/dotientri/repository-k8s.git
-    targetRevision: main
-    path: monitoring/manifests
+    targetRevision: master
+    path: monitoring
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring

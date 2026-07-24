@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/dotientri/repository-k8s.git
-    targetRevision: main
+    targetRevision: master
     path: gitops/applications
   destination:
     server: https://kubernetes.default.svc
