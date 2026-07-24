@@ -1,0 +1,5 @@
+# Local secrets and credentials
+monitoring/alertmanager/alertmanager-secret.yaml
+**/*-secret.yaml
+*.pem
+.env
