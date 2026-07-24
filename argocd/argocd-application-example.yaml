@@ -1,103 +1,43 @@
 ---
-# Ví dụ ArgoCD Application với node selector
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: my-app
+  name: monitoring-stack
   namespace: argocd
-  finalizers:
-  - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  
   source:
-    repoURL: https://github.com/your-org/your-repo.git
-    targetRevision: main
-    path: deploy/app
-  
+    repoURL: https://github.com/dotientri/repository-k8s.git
+    targetRevision: master
+    path: monitoring
   destination:
     server: https://kubernetes.default.svc
-    namespace: default
-  
+    namespace: monitoring
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
-    - CreateNamespace=true
-    retry:
-      limit: 5
-      backoff:
-        duration: 5s
-        factor: 2
-        maxDuration: 3m
+      - CreateNamespace=true
 
 ---
-# Ví dụ: Kustomize application
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: my-kustomize-app
+  name: ecommerce-microservice
   namespace: argocd
 spec:
   project: default
-  
   source:
-    repoURL: https://github.com/your-org/your-repo.git
-    targetRevision: main
-    path: kustomize/overlays/production
-  
+    repoURL: https://github.com/dotientri/repository-k8s.git
+    targetRevision: master
+    path: gitops/apps/ecommerce-microservice
   destination:
     server: https://kubernetes.default.svc
-    namespace: production
-  
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: false
-    syncOptions:
-    - CreateNamespace=true
-    retry:
-      limit: 3
-      backoff:
-        duration: 5s
-        factor: 2
-        maxDuration: 1m
-
----
-# Ví dụ: Helm application
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: my-helm-app
-  namespace: argocd
-spec:
-  project: default
-  
-  source:
-    repoURL: https://charts.example.com
-    chart: my-chart
-    targetRevision: 1.0.0
-    helm:
-      releaseName: my-release
-      values: |
-        image:
-          tag: latest
-        resources:
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-  
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: default
-  
+    namespace: ecommerce
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
-    - CreateNamespace=true
+      - CreateNamespace=true

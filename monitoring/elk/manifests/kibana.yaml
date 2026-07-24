@@ -30,6 +30,8 @@ spec:
       labels:
         app: kibana
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: monitoring-worker
       containers:
         - name: kibana
           image: docker.elastic.co/kibana/kibana:8.13.0
@@ -43,10 +45,10 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 512Mi
+              memory: 384Mi
             limits:
               cpu: 500m
-              memory: 1Gi
+              memory: 768Mi
           readinessProbe:
             httpGet:
               path: /api/status
